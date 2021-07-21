@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<mule xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+    <http:listener-config name="api-httpListenerConfig">
+        <http:listener-connection host="${host}" port="${port}"/>
+    </http:listener-config>
+    <apikit-soap:config httpStatusVarName="httpStatus" name="soapkit-config" port="TshirtServicePort" service="TshirtService" wsdlLocation="tshirt2.wsdl"/>
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="/TshirtService/TshirtServicePort">
+            <http:response statusCode="#[attributes.additionalTransportData.statusCode default 200]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[attributes.protocolHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[attributes.additionalTransportData.statusCode default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[attributes.protocolHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit-soap:router config-ref="soapkit-config">
+            <apikit-soap:message>#[payload]</apikit-soap:message>
+            <apikit-soap:attributes>#[
+              %dw 2.0
+              output application/java
+              ---
+              {
+                  headers: attributes.headers,
+                  method: attributes.method,
+                  queryString: attributes.queryString
+            }]</apikit-soap:attributes>
+        </apikit-soap:router>
+    </flow>
+    <flow name="OrderTshirt:\soapkit-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://mulesoft.org/tshirt-service
+---
+{
+	body : {
+		ns0#OrderTshirtResponse: {
+			orderId: "I got a request from "
+			++ payload.body.ns0#OrderTshirt.name
+			++ " using the following auth header "
+			++ (payload.headers["AuthenticationHeader"].ns0#AuthenticationHeader.apiKey default "")
+		}
+	} write "application/xml",
+
+	headers: {
+		header: {
+			ns0#APIUsageInformation: {
+				apiCallsRemaining: 10 
+			}
+		} write "application/xml"
+	}
+
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+    <flow name="ListInventory:\soapkit-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://mulesoft.org/tshirt-service
+ns soap http://schemas.xmlsoap.org/soap/envelope/
+---
+{
+  soap#Fault: {
+    faultcode: "soap:Server",
+    faultstring: "The error details",
+    detail: {
+      ns0#TshirtFault: {
+        errorStuff: 500
+      }
+    }
+  }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+		<apikit-soap:fault doc:name="SOAP Fault" doc:id="a8a50c65-c23e-43d3-bab6-36a39da0a790" config-ref="soapkit-config" operation="ListInventory" fault="TshirtFault"/>
+    </flow>
+    <flow name="TrackOrder:\soapkit-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+ns ns0 http://mulesoft.org/tshirt-service
+---
+{
+      body : {
+         ns0#OrderTshirtResponse: {
+           orderId: "I got a request from "
+           ++ payload.body.ns0#OrderTshirt.name
+           ++ " using the following auth header "
+           ++ (payload.headers["AuthenticationHeader"].ns0#AuthenticationHeader.apiKey default "")
+        }
+    } write "application/xml"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+</mule>
